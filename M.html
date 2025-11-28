@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ar">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Patent Figures Generator — Flowchart (FIG1..FIG7)</title>
+<style>
+  :root{
+    --bg:#fff; --stroke:#000; --font:"Arial", "Helvetica", sans-serif;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);font-family:var(--font);}
+  .app{display:flex;gap:12px;height:100vh;padding:12px;box-sizing:border-box;}
+  .panel{width:420px;min-width:300px;border:1px solid #ddd;padding:10px;box-sizing:border-box;overflow:auto;}
+  .canvas-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px;box-sizing:border-box;}
+  textarea{width:100%;height:40vh;font-family:monospace;font-size:13px;box-sizing:border-box;}
+  button{margin:6px 6px 6px 0;padding:8px 12px;border:0;background:#222;color:#fff;border-radius:4px;cursor:pointer;}
+  button.secondary{background:#666;}
+  .hint{font-size:13px;color:#333;margin:8px 0}
+  svg{background:#fff;border:1px solid #999;}
+  .toolbar{margin-bottom:8px;}
+  footer{font-size:12px;color:#444;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <h3>Input JSON (edit &amp; Generate)</h3>
+    <div class="hint">Example below corresponds to FIG.1. Edit nodes/edges, then press Generate.</div>
+    <textarea id="jsonInput"></textarea>
+    <div style="margin-top:8px;">
+      <button id="gen">Generate</button>
+      <button id="export" class="secondary">Export PNG</button>
+      <button id="print" class="secondary">Print / Save as PDF</button>
+      <button id="reset" class="secondary">Reset Example</button>
+    </div>
+    <hr/>
+    <div class="hint"><strong>Notes:</strong> - Numbers shown on top-right of boxes (e.g., 100, 110). - Style: black/white, vector SVG. - Auto-vertical layout if y omitted.</div>
+    <footer>Designed for GitHub Pages — Single HTML file.</footer>
+  </div>
+
+  <div class="canvas-wrap">
+    <div class="toolbar">
+      <strong>Rendered Figure</strong>
+    </div>
+    <div id="svgContainer"></div>
+  </div>
+</div>
+
+<script>
+// Default example JSON for FIG.1 (use Arabic/English labels as you wish)
+const defaultJSON = {
+  "width": 800,
+  "height": 1100,
+  "style":{"stroke":"#000","fill":"#fff","fontFamily":"Arial","fontSize":20,"titleFontSize":28},
+  "nodes": [
+    {"id":"n100","label":"BEHAVIORAL BIOMETRIC ENGINE\nMotion Signature\nKeystroke Dynamics\nDevice Interaction\nTouch Rhythm","num":"100"},
+    {"id":"n110","label":"INSTANTANEOUS\nMATCHING UNIT\nBehavioral Conform\nIndex","num":"110"},
+    {"id":"n120","label":"DECISION ENGINE\nAllow\nGreylist (Require Additional Check)\nBlock","num":"120"},
+    {"id":"n140","label":"CUSTOMER\nNOTIFICATION","num":"140"},
+    {"id":"n150","label":"BANKING\nCONTROL PANEL","num":"150"},
+    {"id":"n160","label":"LEGAL LOGGING\nLAYER","num":"160"}
+  ],
+  "edges": [
+    {"from":"n100","to":"n110"},
+    {"from":"n110","to":"n120"},
+    {"from":"n120","to":"n140"},
+    {"from":"n120","to":"n150"},
+    {"from":"n120","to":"n160"},
+    {"from":"n150","to":"n160"},
+    {"from":"n140","to":"n160"}
+  ],
+  "layout":{"type":"vertical","marginX":80,"marginY":40,"vSpacing":40,"boxW":420,"boxH":120}
+};
+
+function setTextarea(obj){
+  document.getElementById('jsonInput').value = JSON.stringify(obj, null, 2);
+}
+
+function parseJSON(){
+  const txt = document.getElementById('jsonInput').value;
+  try{
+    return JSON.parse(txt);
+  }catch(e){
+    alert("Invalid JSON: " + e.message);
+    throw e;
+  }
+}
+
+function createSVG(root, spec){
+  // clear
+  root.innerHTML = '';
+  const W = spec.width || 800;
+  const H = spec.height || 1100;
+  const svgns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgns, "svg");
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.style.maxWidth = "100%";
+  svg.style.height = "auto";
+  svg.style.background = "#fff";
+  // defs arrow
+  const defs = document.createElementNS(svgns,"defs");
+  const marker = document.createElementNS(svgns,"marker");
+  marker.setAttribute("id","arrow");
+  marker.setAttribute("markerWidth","10");
+  marker.setAttribute("markerHeight","10");
+  marker.setAttribute("refX","10");
+  marker.setAttribute("refY","5");
+  marker.setAttribute("orient","auto");
+  const path = document.createElementNS(svgns,"path");
+  path.setAttribute("d","M0,0 L10,5 L0,10 z");
+  path.setAttribute("fill", spec.style?.stroke || "#000");
+  marker.appendChild(path);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  // layout
+  const layout = spec.layout || {};
+  const boxW = layout.boxW || 420;
+  const boxH = layout.boxH || 120;
+  const marginX = layout.marginX ?? 80;
+  const marginY = layout.marginY ?? 40;
+  const vSpacing = layout.vSpacing ?? 30;
+  // compute positions: vertical flow by nodes order (if no explicit x,y)
+  let y = marginY;
+  const positions = {};
+  spec.nodes.forEach((n, idx) => {
+    const x = (W - boxW) / 2;
+    positions[n.id] = {
+      x: n.x ?? x,
+      y: n.y ?? (y),
+      w: n.w ?? boxW,
+      h: n.h ?? boxH
+    };
+    y += boxH + vSpacing;
+  });
+
+  // draw edges under boxes
+  spec.edges.forEach(e => {
+    const from = positions[e.from];
+    const to = positions[e.to];
+    if(!from || !to) return;
+    // start at bottom center of from, end at top center of to
+    const x1 = from.x + from.w/2;
+    const y1 = from.y + from.h;
+    const x2 = to.x + to.w/2;
+    const y2 = to.y;
+    // create path with simple vertical/horizontal elbow if x differs
+    const pathEl = document.createElementNS(svgns,"path");
+    const stroke = spec.style?.stroke || "#000";
+    pathEl.setAttribute("fill","none");
+    pathEl.setAttribute("stroke", stroke);
+    pathEl.setAttribute("stroke-width","2");
+    pathEl.setAttribute("marker-end","url(#arrow)");
+    let d;
+    if(Math.abs(x1-x2) < 1){
+      d = `M ${x1} ${y1} L ${x2} ${y2-8}`;
+    } else {
+      const midY = (y1 + y2)/2;
+      d = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2-8}`;
+    }
+    pathEl.setAttribute("d", d);
+    svg.appendChild(pathEl);
+  });
+
+  // draw boxes and text (top layer)
+  spec.nodes.forEach(n=>{
+    const pos = positions[n.id];
+    const group = document.createElementNS(svgns,"g");
+    // rect
+    const rect = document.createElementNS(svgns,"rect");
+    rect.setAttribute("x", pos.x);
+    rect.setAttribute("y", pos.y);
+    rect.setAttribute("width", pos.w);
+    rect.setAttribute("height", pos.h);
+    rect.setAttribute("rx",6);
+    rect.setAttribute("ry",6);
+    rect.setAttribute("fill", spec.style?.fill || "#fff");
+    rect.setAttribute("stroke", spec.style?.stroke || "#000");
+    rect.setAttribute("stroke-width","2");
+    group.appendChild(rect);
+    // label text - multi-line centered
+    const lines = (n.label || "").split("\n");
+    const fontSize = spec.style?.fontSize || 20;
+    const fontFamily = spec.style?.fontFamily || "Arial, Helvetica, sans-serif";
+    const lineHeight = fontSize * 1.1;
+    const totalH = lines.length * lineHeight;
+    let startY = pos.y + (pos.h - totalH)/2 + fontSize;
+    lines.forEach((ln,i)=>{
+      const t = document.createElementNS(svgns,"text");
+      t.setAttribute("x", pos.x + pos.w/2);
+      t.setAttribute("y", startY + i*lineHeight);
+      t.setAttribute("text-anchor","middle");
+      t.setAttribute("font-family", fontFamily);
+      t.setAttribute("font-size", fontSize);
+      t.setAttribute("font-weight", "700");
+      t.setAttribute("fill", spec.style?.stroke || "#000");
+      t.textContent = ln;
+      group.appendChild(t);
+    });
+    // number label top-right small
+    if(n.num){
+      const tn = document.createElementNS(svgns,"text");
+      tn.setAttribute("x", pos.x + pos.w - 8);
+      tn.setAttribute("y", pos.y + 18);
+      tn.setAttribute("text-anchor","end");
+      tn.setAttribute("font-family", fontFamily);
+      tn.setAttribute("font-size", Math.max(14, fontSize-4));
+      tn.setAttribute("font-weight","700");
+      tn.textContent = n.num;
+      group.appendChild(tn);
+    }
+    svg.appendChild(group);
+  });
+
+  // FIG label bottom center
+  const figLabel = document.createElementNS(svgns,"text");
+  figLabel.setAttribute("x", W/2);
+  figLabel.setAttribute("y", H - 18);
+  figLabel.setAttribute("text-anchor","middle");
+  figLabel.setAttribute("font-family", spec.style?.fontFamily || "Arial");
+  figLabel.setAttribute("font-size", Math.max(22, spec.style?.titleFontSize || 26));
+  figLabel.setAttribute("font-weight","800");
+  figLabel.textContent = "FIG. 1";
+  svg.appendChild(figLabel);
+
+  root.appendChild(svg);
+  return svg;
+}
+
+// export svg to PNG
+function svgToPng(svgEl, callback){
+  const xml = new XMLSerializer().serializeToString(svgEl);
+  const svg64 = btoa(unescape(encodeURIComponent(xml)));
+  const b64Start = 'data:image/svg+xml;base64,';
+  const image64 = b64Start + svg64;
+  const img = new Image();
+  img.onload = function(){
+    const canvas = document.createElement("canvas");
+    canvas.width = svgEl.viewBox.baseVal.width || svgEl.getAttribute("width");
+    canvas.height = svgEl.viewBox.baseVal.height || svgEl.getAttribute("height");
+    const ctx = canvas.getContext("2d");
+    // white background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0);
+    canvas.toBlob(function(blob){
+      callback(blob);
+    }, "image/png");
+  };
+  img.onerror = function(e){
+    alert("Error converting SVG to PNG. Make sure the page is served over http(s).");
+    console.error(e);
+  };
+  img.crossOrigin = "anonymous";
+  img.src = image64;
+}
+
+// initial
+setTextarea(defaultJSON);
+let currentSvg = null;
+
+document.getElementById('gen').addEventListener('click', ()=>{
+  try{
+    const spec = parseJSON();
+    const root = document.getElementById('svgContainer');
+    currentSvg = createSVG(root, spec);
+  }catch(e){}
+});
+
+document.getElementById('reset').addEventListener('click', ()=>{
+  setTextarea(defaultJSON);
+});
+
+document.getElementById('export').addEventListener('click', ()=>{
+  if(!currentSvg){
+    alert("Please Generate the diagram first.");
+    return;
+  }
+  svgToPng(currentSvg, function(blob){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "FIG1.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+});
+
+document.getElementById('print').addEventListener('click', ()=>{
+  if(!currentSvg){
+    alert("Please Generate the diagram first.");
+    return;
+  }
+  // open a new window with svg and print
+  const xml = new XMLSerializer().serializeToString(currentSvg);
+  const w = window.open("");
+  w.document.write('<html><head><title>Print Figure</title></head><body>');
+  w.document.write(xml);
+  w.document.write('</body></html>');
+  w.document.close();
+  w.focus();
+  setTimeout(()=>{ w.print(); }, 600);
+});
+
+// auto-generate once
+document.getElementById('gen').click();
+
+</script>
+</body>
+</html>
