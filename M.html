@@ -1,1 +1,46 @@
+import graphviz
 
+G = graphviz.Digraph('FIG5_Secure_Sovereign_Government_Linking', format='png')
+
+# Global graph settings (black & white, clean line drawing style)
+G.attr(rankdir='TB', bgcolor='white')
+G.attr('node', shape='box', style='solid', color='black', fontcolor='black', fontsize='10', penwidth='1')
+G.attr('edge', color='black', penwidth='1')
+
+# Main vertical flow nodes (500–590)
+G.node('500', '500 — System Sovereign Decision Output')
+G.node('510', '510 — Legal Documentation Generator (hash, IDs)')
+G.node('520', '520 — Trusted Timestamp Authority (TSA) stamping')
+G.node('530', '530 — Sovereign Signature in HSM')
+G.node('540', '540 — Secure Government Gateway (Mutual TLS)')
+G.node('550', '550 — Government Identity/Compliance Interface\n(Read: identity/constraints lists)\n(Write: deposit signed legal record)')
+G.node('560', '560 — Sovereign Attestation Exchange\n(Gov. counter-signature linking to identity)')
+G.node('570', '570 — Bank Compliance Panel')
+G.node('580', '580 — Customer Notification & Consent (policy-dependent)')
+G.node('590', '590 — Append-only Tamper-evident Audit Log\n(Hash-chained entries for all steps)')
+
+# Main vertical edges
+G.edge('500', '510')
+G.edge('510', '520')
+G.edge('520', '530')
+G.edge('530', '540')
+G.edge('540', '550')
+G.edge('550', '560')
+G.edge('560', '570')
+G.edge('570', '590')
+
+# Side branch: compliance panel -> customer notification -> audit log
+G.edge('570', '580')
+G.edge('580', '590')
+
+# Audit feeds from key steps to 590 (thin edges)
+G.edge('510', '590', style='dashed')
+G.edge('520', '590', style='dashed')
+G.edge('530', '590', style='dashed')
+G.edge('540', '590', style='dashed')
+G.edge('560', '590', style='dashed')
+G.edge('580', '590', style='dashed')
+
+# Render output
+G.render(filename='fig5_secure_sovereign_linking', cleanup=True)
+print('Generated: fig5_secure_sovereign_linking.png')
